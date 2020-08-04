@@ -57,3 +57,6 @@ Temporary Items
 *.exe
 *.out
 *.app
+
+# Mine
+tmp/*
