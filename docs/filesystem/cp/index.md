@@ -11,7 +11,7 @@ What we call sparse files are regular files, which content is not contiguous, he
 
 How these files can be created ? well that's easy, first you create a file, then you write some content, then you increment the offset, and then you write data again. See the following listing:
 
-```
+```c
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 char buf1[] = "abcdefghij";
@@ -50,9 +50,9 @@ $ gcc sparseFileCreator.c
 $ ./a.out
 $ ls -als tmp/
 total 16
-0 drwxr-xr-x  3 jul  staff          96 Aug  5 06:44 .
-0 drwxr-xr-x  7 jul  staff         224 Aug  5 06:44 ..
-16 -rw-r--r--  1 jul  staff  1073741824 Aug  5 06:44 file.hole
+0 drwxr-xr-x  3 kirby88  staff          96 Aug  5 06:44 .
+0 drwxr-xr-x  7 kirby88  staff         224 Aug  5 06:44 ..
+16 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 06:44 file.hole
 ```
 
 So we only wrote 20 bytes of data, but as you can see in the listing, the overall size is 1073741824 bytes (1 GiB), which makes sense because we extended the pointer to that size.
@@ -64,21 +64,21 @@ So yeah we have a 1GiB file in size stored on 8KiB, and that's why it's called s
 
 Well, let's find out!
 
-```
+```sh
 $ time cp tmp/file.hole tmp/file_cp.hole
 cp tmp/file.hole tmp/file_cp.hole  0.00s user 0.57s system 43% cpu 1.314 total
 $ ls -als tmp
 total 2105360
-      0 drwxr-xr-x  4 jul  staff         128 Aug  5 06:53 .
-      0 drwxr-xr-x  7 jul  staff         224 Aug  5 06:53 ..
-     16 -rw-r--r--  1 jul  staff  1073741824 Aug  5 06:44 file.hole
-2105344 -rw-r--r--  1 jul  staff  1073741824 Aug  5 06:53 file_cp.hole
+      0 drwxr-xr-x  4 kirby88  staff         128 Aug  5 06:53 .
+      0 drwxr-xr-x  7 kirby88  staff         224 Aug  5 06:53 ..
+     16 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 06:44 file.hole
+2105344 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 06:53 file_cp.hole
 ```
 
 I used the `time` command to measure how much time `cp` is taking. And as we can see, it took `cp` 1.314s to copy the file.
 We can verify that both size have the same contents:
 
-```
+```sh
 $ od -c tmp/file.hole
 0000000    a   b   c   d   e   f   g   h   i   j  \0  \0  \0  \0  \0  \0
 0000020   \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
@@ -92,7 +92,7 @@ $ od -c tmp/file_cp.hole
 7777777760   \0  \0  \0  \0  \0  \0   A   B   C   D   E   F   G   H   I   J
 10000000000
 ```
-The [`od`](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/od.html) command reads a file and display its characters thanks to the `-c` option.
+The [`od`](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/od.html) command reads a file and display its characters thanks to the `-c` option. The star means that there are multiple lines exactly the same as the one that was printed above.
 
 So we do have the same content for both `file.hole` and `file_cp.hole`, they are both the same `stat.st_blocks` size, but the size allocated differs, as the result of the `cp`command was copy byte to byte, it takes at least 1GiB on disk. (it actually takes more 2105344*512=1077936128 which is 1GiB and 4MiB. My guess is that the system stores extra data that ends up being 4MiB for a 1GiB).
 
@@ -102,7 +102,7 @@ So we do have the same content for both `file.hole` and `file_cp.hole`, they are
 
 Let's try to implement our own implementation of `cp` that correct that behavior.
 
-```
+```c
 #define FILE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 int main(int argc, char **argv) {
@@ -152,22 +152,22 @@ Then we create a buffer of the size of the most adequate block for reading the f
 
 ## Performances
 
-```
+```c
 $ gcc main.c
 $ time ./a.out tmp/file.hole tmp/file_cp2.hole
 ./a.out tmp/file.hole tmp/file_cp2.hole  2.35s user 0.29s system 99% cpu 2.652 total
 $ ls -als tmp
 total 2105376
-      0 drwxr-xr-x  5 jul  staff         160 Aug  5 07:13 .
-      0 drwxr-xr-x  7 jul  staff         224 Aug  5 07:12 ..
-     16 -rw-r--r--  1 jul  staff  1073741824 Aug  5 06:44 file.hole
-2105344 -rw-r--r--  1 jul  staff  1073741824 Aug  5 06:53 file_cp.hole
-     16 -rw-r--r--  1 jul  staff  1073741824 Aug  5 07:13 file_cp2.hole
+      0 drwxr-xr-x  5 kirby88  staff         160 Aug  5 07:13 .
+      0 drwxr-xr-x  7 kirby88  staff         224 Aug  5 07:12 ..
+     16 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 06:44 file.hole
+2105344 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 06:53 file_cp.hole
+     16 -rw-r--r--  1 kirby88  staff  1073741824 Aug  5 07:13 file_cp2.hole
 ```
 
 So as you can see, the file copied by our program is the same size, but have only 16 blocks of 512 bytes allocated on disk, just likeb the original. Let's verify the content:
 
-```
+```sh
 $ od -c tmp/file.hole
 0000000    a   b   c   d   e   f   g   h   i   j  \0  \0  \0  \0  \0  \0
 0000020   \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
